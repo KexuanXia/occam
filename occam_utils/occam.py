@@ -53,9 +53,11 @@ class OccAM(object):
                                         class_names=self.class_names,
                                         occam_config=self.occam_config)
 
+        # 创建推理模型的网络，用的是pcdet的api
         self.model = build_network(model_cfg=self.model_config,
                                    num_class=len(self.class_names),
                                    dataset=self.base_dataset)
+        # 从ckpt中读取预训练的模型参数
         self.model.load_params_from_file(filename=model_ckpt_path,
                                          logger=logger, to_cpu=True)
         self.model.cuda()
@@ -106,6 +108,7 @@ class OccAM(object):
         data_dict = self.base_dataset.collate_batch([data_dict])
         load_data_to_gpu(data_dict)
 
+        # 模型推理
         with torch.no_grad():
             base_pred_dict, _ = self.model.forward(data_dict)
 
@@ -302,6 +305,7 @@ class OccAM(object):
             logger=self.logger
         )
 
+        # pytorch的dataloader
         dataloader = DataLoader(
             occam_inference_dataset, batch_size=batch_size, pin_memory=True,
             num_workers=num_workers, shuffle=False,
@@ -314,10 +318,16 @@ class OccAM(object):
             dynamic_ncols=True)
 
         with torch.no_grad():
+            # 这里的batch_dict已经是mask过的了
+            # 这个enumerate内部会调用OccamInferenceDataset.__getitem__()
             for i, batch_dict in enumerate(dataloader):
+                # print("number of points in batch_dict: ", batch_dict['points'].shape)
 
                 load_data_to_gpu(batch_dict)
                 pert_pred_dicts, _ = self.model.forward(batch_dict)
+                # if i < 1:
+                #     print("batch_dict: ", batch_dict)
+                #     print("pert_pred_dicts: ", pert_pred_dicts)
 
                 pert_det_boxes, pert_det_labels, pert_det_scores, batch_ids = \
                     self.merge_detections_in_batch(pert_pred_dicts)
@@ -346,7 +356,7 @@ class OccAM(object):
 
         return attr_maps
 
-    def visualize_attr_map(self, points, box, attr_map, draw_origin=True):
+    def visualize_attr_map(self, points, box, attr_map, draw_origin=False):
         turbo_cmap = plt.get_cmap('turbo')
         attr_map_scaled = attr_map - attr_map.min()
         attr_map_scaled /= attr_map_scaled.max()

@@ -194,4 +194,8 @@ class OccamInferenceDataset(DatasetTemplate):
 
         data_dict = self.prepare_data(data_dict=input_dict)
 
+        # save_path = '/home/xkx/kitti/training/velodyne_masked/000002/000002_' + str(index) + '.bin'
+        # input_dict['points'].tofile(save_path)
+        # print(str(index) + '.bin has been stored')
+
         return data_dict
