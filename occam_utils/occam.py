@@ -5,6 +5,7 @@ import tqdm
 import math
 import numpy as np
 import matplotlib.pyplot as plt
+import pickle
 from collections import defaultdict
 
 from torch.utils.data import DataLoader
@@ -144,6 +145,8 @@ class OccAM(object):
 
         data_dict = defaultdict(list)
         for batch_id, cur_sample in enumerate(det_dicts):
+            if cur_sample['pred_labels'].numel() == 0:
+                continue
             batch_ids.append(
                 np.ones(cur_sample['pred_labels'].shape[0], dtype=int)
                 * batch_id)
@@ -321,14 +324,8 @@ class OccAM(object):
             # 这里的batch_dict已经是mask过的了
             # 这个enumerate内部会调用OccamInferenceDataset.__getitem__()
             for i, batch_dict in enumerate(dataloader):
-                # print("number of points in batch_dict: ", batch_dict['points'].shape)
-
                 load_data_to_gpu(batch_dict)
                 pert_pred_dicts, _ = self.model.forward(batch_dict)
-                # if i < 1:
-                #     print("batch_dict: ", batch_dict)
-                #     print("pert_pred_dicts: ", pert_pred_dicts)
-
                 pert_det_boxes, pert_det_labels, pert_det_scores, batch_ids = \
                     self.merge_detections_in_batch(pert_pred_dicts)
 
@@ -385,5 +382,105 @@ class OccAM(object):
 
         vis.run()
         vis.destroy_window()
-        
-        
+
+    def read_and_preprocess_masked_dt_results(self, source_file_path):
+        read_path = f'/home/xkx/kitti/training/velodyne_masked_dt_results/{source_file_path[-10: -4]}_{self.nr_it}.pkl'
+        masked_dt_results = []
+        with open(read_path, 'rb') as file:
+            data = pickle.load(file)
+        for dict in data:
+            pred_boxes = dict["box3d_lidar"]
+            pred_boxes[:, [3, 4]] = pred_boxes[:, [4, 3]]
+            pred_scores = dict["scores"]
+            pred_labels = dict["label_preds"] + 1
+            masked_dt_results.append({
+                "pred_boxes": pred_boxes,
+                "pred_scores": pred_scores,
+                "pred_labels": pred_labels
+            })
+
+        read_path = f'/home/xkx/kitti/training/velodyne_masked/{source_file_path[-10: -4]}_{self.nr_it}.pkl'
+        mask = []
+        with open(read_path, 'rb') as file:
+            data = pickle.load(file)
+        for dict in data:
+            mask.append(
+                {"mask": dict["mask"]}
+            )
+        return masked_dt_results, mask
+
+    def compute_attribution_maps_fusion(self, pcl, base_det_boxes, base_det_labels,
+                                        batch_size, source_file_path):
+
+        attr_maps = np.zeros((base_det_labels.shape[0], pcl.shape[0]))
+        # count number of occurrences of each point in sampled pcl's
+        sampling_map = np.zeros(pcl.shape[0])
+
+        progress_bar = tqdm.tqdm(
+            total=self.nr_it, leave=True, desc='OccAM computation',
+            dynamic_ncols=True)
+
+        masked_dt_results, mask = self.read_and_preprocess_masked_dt_results(source_file_path)
+
+        # 3000/8=375
+        for i in range(self.nr_it // batch_size):
+            pert_pred_dicts = masked_dt_results[i * batch_size: (i + 1) * batch_size]
+            batch_mask = mask[i]
+            load_data_to_gpu(batch_mask)
+
+            pert_det_boxes, pert_det_labels, pert_det_scores, batch_ids = \
+                self.merge_detections_in_batch(pert_pred_dicts)
+
+            similarity_matrix = self.get_similarity_matrix(
+                base_det_boxes, base_det_labels,
+                pert_det_boxes, pert_det_labels, pert_det_scores)
+
+            cur_batch_size = len(pert_pred_dicts)
+            for j in range(cur_batch_size):
+                cur_mask = batch_mask['mask'][j, :].cpu().numpy()
+                sampling_map += cur_mask
+
+                batch_sample_mask = batch_ids == j
+                if np.sum(batch_sample_mask) > 0:
+                    max_score = np.max(
+                        similarity_matrix[:, batch_sample_mask], axis=1)
+                    attr_maps += max_score[:, None] * cur_mask
+
+            progress_bar.update(n=cur_batch_size)
+
+        progress_bar.close()
+
+        # normalize using occurrences
+        attr_maps[:, sampling_map > 0] /= sampling_map[sampling_map > 0]
+
+        return attr_maps
+
+    def save_masked_input(self, save_path, pcl, batch_size, num_workers):
+
+        occam_inference_dataset = OccamInferenceDataset(
+            data_config=self.data_config, class_names=self.class_names,
+            occam_config=self.occam_config, pcl=pcl, nr_it=self.nr_it,
+            logger=self.logger
+        )
+
+        # pytorch的dataloader
+        dataloader = DataLoader(
+            occam_inference_dataset, batch_size=batch_size, pin_memory=True,
+            num_workers=num_workers, shuffle=False,
+            collate_fn=occam_inference_dataset.collate_batch, drop_last=False,
+            sampler=None, timeout=0
+        )
+
+        results = []
+
+        for i, dict in enumerate(dataloader):
+            dict = {
+                "points": dict["points"],
+                "mask": dict["mask"]
+            }
+            results.append(dict)
+
+        with open(save_path, "wb") as file:
+            pickle.dump(results, file)
+
+        print(f"File has been stored")

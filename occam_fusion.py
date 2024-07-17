@@ -6,10 +6,6 @@ from pcdet.utils import common_utils
 
 from occam_utils.occam import OccAM
 
-from CLOCs.second.pytorch.models import fusion
-from CLOCs import torchplus
-import numpy as np
-
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
@@ -19,12 +15,10 @@ def parse_config():
     parser.add_argument('--occam_cfg_file', type=str,
                         default='cfgs/occam_configs/kitti_pointpillar.yaml',
                         help='specify the OccAM config')
-    parser.add_argument('--source_file_path', type=str,
-                        default='../kitti/training/velodyne/000002.bin',
+    parser.add_argument('--source_file_path', type=str, default='/home/xkx/kitti/training/velodyne/000002.bin',
                         help='point cloud data file to analyze')
     parser.add_argument('--ckpt', type=str,
-                        default='pretrained_model/based_on_kitti/second_7862.pth',
-                        required=True,
+                        default='pretrained_model/based_on_kitti/second_7862.pth', required=False,
                         help='path to pretrained model parameters')
     parser.add_argument('--batch_size', type=int, default=8,
                         help='batch size for OccAM creation')
@@ -37,6 +31,9 @@ def parse_config():
 
     args = parser.parse_args()
 
+    # 读取model_cfg_file和occam_cfg_file的内容并把它们拼接成一个字典
+    # 因为model_cfg_file里包含了_BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset.yaml
+    # 所以实际上是kitti_dataset.yaml, second.yaml, kitti_pointpillar.yaml三个配置文件的拼接
     cfg_from_yaml_file(args.model_cfg_file, cfg)
     cfg_from_yaml_file(args.occam_cfg_file, cfg)
 
@@ -44,40 +41,31 @@ def parse_config():
 
 
 def main():
-    # args, config = parse_config()
-    # logger = common_utils.create_logger()
-    # logger.info('------------------------ OccAM Demo -------------------------')
+    args, config = parse_config()
+    logger = common_utils.create_logger()
+    logger.info('------------------------ OccAM_Fusion Demo -------------------------')
 
-    scene_idx = '000002'
-    path_to_pretrained_fusion_model = 'CLOCs/CLOCs_SecCas_pretrained'
-    path_to_2d_detection_result = 'CLOCs/d2_detection_data/' + scene_idx + '.txt'
-    path_to_example = '../kitti/example/' + scene_idx + '.pkl'
-    with open(path_to_example, 'rb') as file:
-        example = pickle.load(file)
+    occam = OccAM(data_config=config.DATA_CONFIG, model_config=config.MODEL,
+                  occam_config=config.OCCAM, class_names=config.CLASS_NAMES,
+                  model_ckpt_path=args.ckpt, nr_it=args.nr_it, logger=logger)
 
-    # with open(path_to_2d_detection_result, 'r') as f:
-    #     lines = f.readlines()
-    # # 把检测结果转换成list，每个检测结果为一行
-    # content = [line.strip().split(' ') for line in lines]
-    # # 检测到的目标类别，这里全是‘Car’
-    # predicted_class = np.array([x[0] for x in content], dtype='object')
-    # # Car对应的检测索引
-    # predicted_class_index = np.where(predicted_class == 'Car')
-    # # 提取2d检测框[x1, y1, x2, y2]
-    # detection_result = np.array([[float(info) for info in x[4:8]] for x in content]).reshape(-1, 4)
-    # # 提取检测分数
-    # score = np.array([float(x[15]) for x in content])  # 1000 is the score scale!!!
-    # # 把检测框和分数放一起[x1, y1, x2, y2, score]
-    # # 目前来看f_detection_result, middle_predictions, top_predictions是完全一样的
-    # f_detection_result = np.append(detection_result, score.reshape(-1, 1), 1)
-    # middle_predictions = f_detection_result[predicted_class_index, :].reshape(-1, 5)
-    # top_predictions = middle_predictions[np.where(middle_predictions[:, 4] >= -100)]
-    #
-    #
-    #
-    # fusion_layer = fusion.fusion()
-    # torchplus.train.try_restore_latest_checkpoints(path_to_pretrained_fusion_model, [fusion_layer])
-    # fusion_layer.forward(fusion_input.cuda(),torch_index.cuda())
+    pcl = occam.load_and_preprocess_pcl(args.source_file_path)
+    base_det = occam.get_base_predictions(pcl=pcl)
+    base_det_boxes, base_det_labels, base_det_scores = base_det
+
+    # save_path = f'/home/xkx/kitti/training/velodyne_masked/{args.source_file_path[-10: -4]}_{args.nr_it}.pkl'
+    # occam.save_masked_input(save_path, pcl, args.batch_size, args.workers)
+    # masked_dt_results, mask = occam.read_and_preprocess_masked_dt_results('/home/xkx/kitti/training/velodyne/000002.bin')
+    # print(masked_dt_results)
+
+    attr_maps = occam.compute_attribution_maps_fusion(
+        pcl=pcl, base_det_boxes=base_det_boxes,
+        base_det_labels=base_det_labels, batch_size=args.batch_size, source_file_path=args.source_file_path)
+
+    logger.info('DONE')
+
+    logger.info(f'Visualize attribution map of {args.object}th object')
+    occam.visualize_attr_map(pcl, base_det_boxes[args.object, :], attr_maps[args.object, :])
 
 
 if __name__ == '__main__':

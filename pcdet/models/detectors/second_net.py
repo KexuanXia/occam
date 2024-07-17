@@ -9,10 +9,6 @@ class SECONDNet(Detector3DTemplate):
     def forward(self, batch_dict):
         for cur_module in self.module_list:
             batch_dict = cur_module(batch_dict)
-        # print("batch_dict: ", batch_dict)
-        # print("keys in batch_dict: ", batch_dict.keys())
-        # print("batch_box_preds: ", batch_dict['batch_box_preds'].shape)
-        # print("batch_cls_preds: ", batch_dict['batch_cls_preds'].shape)
         if self.training:
             loss, tb_dict, disp_dict = self.get_training_loss()
 
