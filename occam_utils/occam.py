@@ -145,8 +145,6 @@ class OccAM(object):
 
         data_dict = defaultdict(list)
         for batch_id, cur_sample in enumerate(det_dicts):
-            if cur_sample['pred_labels'].numel() == 0:
-                continue
             batch_ids.append(
                 np.ones(cur_sample['pred_labels'].shape[0], dtype=int)
                 * batch_id)
@@ -253,6 +251,8 @@ class OccAM(object):
             similarity score between all K detections in the full pcl and
             the L detections in the perturbed samples within the batch
         """
+        if len(pert_det_boxes) == 0:
+            return np.zeros((base_det_boxes.shape[0], 0))
         # similarity score is only greater zero if boxes overlap
         s_overlap = self.compute_iou(base_det_boxes, pert_det_boxes) > 0
         s_overlap = s_overlap.astype(np.float32)
@@ -353,7 +353,7 @@ class OccAM(object):
 
         return attr_maps
 
-    def visualize_attr_map(self, points, box, attr_map, draw_origin=False):
+    def visualize_attr_map(self, points, box, attr_map, draw_origin=True):
         turbo_cmap = plt.get_cmap('turbo')
         attr_map_scaled = attr_map - attr_map.min()
         attr_map_scaled /= attr_map_scaled.max()
@@ -393,6 +393,9 @@ class OccAM(object):
             pred_boxes[:, [3, 4]] = pred_boxes[:, [4, 3]]
             pred_scores = dict["scores"]
             pred_labels = dict["label_preds"] + 1
+            if pred_labels.shape == (0, 4):
+                pred_labels = pred_labels.reshape(-1)
+            # print("pred_labels: ", pred_labels)
             masked_dt_results.append({
                 "pred_boxes": pred_boxes,
                 "pred_scores": pred_scores,
@@ -407,7 +410,26 @@ class OccAM(object):
             mask.append(
                 {"mask": dict["mask"]}
             )
+        print(f"Successfully read masked detection results from {read_path}")
         return masked_dt_results, mask
+
+    # read unmasked detection results from CLOCs
+    def read_original_dt_results(self, source_file_path):
+        read_path = f'/home/xkx/kitti/training/velodyne_masked_dt_results/{source_file_path[-10: -4]}_original.pkl'
+        with open(read_path, 'rb') as file:
+            data = pickle.load(file)
+        pred_boxes = data["box3d_lidar"]
+        pred_boxes[:, [3, 4]] = pred_boxes[:, [4, 3]]
+        pred_scores = data["scores"]
+        pred_labels = data["label_preds"] + 1
+
+        pred_boxes = pred_boxes.cpu().numpy()
+        pred_scores = pred_scores.cpu().numpy()
+        pred_labels = pred_labels.cpu().numpy()
+
+        print(f"Successfully read original detection results from {read_path}")
+
+        return pred_boxes, pred_labels, pred_scores
 
     def compute_attribution_maps_fusion(self, pcl, base_det_boxes, base_det_labels,
                                         batch_size, source_file_path):
@@ -430,6 +452,9 @@ class OccAM(object):
 
             pert_det_boxes, pert_det_labels, pert_det_scores, batch_ids = \
                 self.merge_detections_in_batch(pert_pred_dicts)
+
+            # if len(pert_det_boxes == 0):
+            #     print("pert_det_boxes: ", pert_det_boxes)
 
             similarity_matrix = self.get_similarity_matrix(
                 base_det_boxes, base_det_labels,
@@ -482,5 +507,10 @@ class OccAM(object):
 
         with open(save_path, "wb") as file:
             pickle.dump(results, file)
+
+        print("results.shape: ", len(results))
+        print("points.shape: ", results[0]["points"].shape)
+        print("mask.shape: ", results[0]["mask"].shape)
+        print("results.example: ", results[0])
 
         print(f"File has been stored")

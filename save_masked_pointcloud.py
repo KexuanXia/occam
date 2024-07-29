@@ -15,7 +15,7 @@ def parse_config():
                         default='cfgs/occam_configs/kitti_pointpillar.yaml',
                         help='specify the OccAM config')
     parser.add_argument('--source_file_path', type=str,
-                        default='/home/xkx/kitti/training/velodyne/000001.bin',
+                        default='/home/xkx/kitti/training/velodyne/000010.bin',
                         help='point cloud data file to analyze')
     parser.add_argument('--ckpt', type=str,
                         default='pretrained_model/based_on_kitti/second_7862.pth', required=False,
@@ -43,7 +43,7 @@ def parse_config():
 def main():
     args, config = parse_config()
     logger = common_utils.create_logger()
-    logger.info('------------------------ OccAM Demo -------------------------')
+    logger.info('------------------------ OccAM_Fusion Demo -------------------------')
 
     occam = OccAM(data_config=config.DATA_CONFIG, model_config=config.MODEL,
                   occam_config=config.OCCAM, class_names=config.CLASS_NAMES,
@@ -51,26 +51,9 @@ def main():
 
     pcl = occam.load_and_preprocess_pcl(args.source_file_path)
 
-    # get detections to analyze (in full pcl)
-    base_det = occam.get_base_predictions(pcl=pcl)
-    base_det_boxes, base_det_labels, base_det_scores = base_det
-    print("base_det_boxes: ", base_det_boxes)
-    print("base_det_labels: ", base_det_labels)
-    print("base_det_scores: ", base_det_scores)
-
-    logger.info('Number of detected objects to analyze: '
-                + str(base_det_labels.shape[0]))
-    logger.info('Start attribution map computation:')
-
-    attr_maps = occam.compute_attribution_maps(
-        pcl=pcl, base_det_boxes=base_det_boxes,
-        base_det_labels=base_det_labels, batch_size=args.batch_size,
-        num_workers=args.workers)
-
-    logger.info('DONE')
-
-    logger.info(f'Visualize attribution map of {args.object}th object')
-    occam.visualize_attr_map(pcl, base_det_boxes[args.object, :], attr_maps[args.object, :])
+    save_path = f'/home/xkx/kitti/training/velodyne_masked/{args.source_file_path[-10: -4]}_{args.nr_it}.pkl'
+    print(save_path)
+    occam.save_masked_input(save_path, pcl, args.batch_size, args.workers)
 
 
 if __name__ == '__main__':

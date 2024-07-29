@@ -1,4 +1,5 @@
 import argparse
+import torch
 import pickle
 
 from pcdet.config import cfg, cfg_from_yaml_file
@@ -15,7 +16,8 @@ def parse_config():
     parser.add_argument('--occam_cfg_file', type=str,
                         default='cfgs/occam_configs/kitti_pointpillar.yaml',
                         help='specify the OccAM config')
-    parser.add_argument('--source_file_path', type=str, default='/home/xkx/kitti/training/velodyne/000002.bin',
+    parser.add_argument('--source_file_path', type=str,
+                        default='/home/xkx/kitti/training/velodyne/000001.bin',
                         help='point cloud data file to analyze')
     parser.add_argument('--ckpt', type=str,
                         default='pretrained_model/based_on_kitti/second_7862.pth', required=False,
@@ -51,16 +53,24 @@ def main():
 
     pcl = occam.load_and_preprocess_pcl(args.source_file_path)
     base_det = occam.get_base_predictions(pcl=pcl)
-    base_det_boxes, base_det_labels, base_det_scores = base_det
+    base_det_boxes_, base_det_labels_, base_det_scores_ = base_det
+    print("OccAM base detection")
+    print("base_det_boxes: ", base_det_boxes_)
+    print("base_det_labels: ", base_det_labels_)
+    print("base_det_scores: ", base_det_scores_)
 
-    # save_path = f'/home/xkx/kitti/training/velodyne_masked/{args.source_file_path[-10: -4]}_{args.nr_it}.pkl'
-    # occam.save_masked_input(save_path, pcl, args.batch_size, args.workers)
-    # masked_dt_results, mask = occam.read_and_preprocess_masked_dt_results('/home/xkx/kitti/training/velodyne/000002.bin')
-    # print(masked_dt_results)
+    base_det_boxes, base_det_labels, base_det_scores = occam.read_original_dt_results(args.source_file_path)
+    print("CLOC base detection")
+    print("base_det_boxes: ", base_det_boxes)
+    print("base_det_labels: ", base_det_labels)
+    print("base_det_scores: ", base_det_scores)
 
     attr_maps = occam.compute_attribution_maps_fusion(
         pcl=pcl, base_det_boxes=base_det_boxes,
         base_det_labels=base_det_labels, batch_size=args.batch_size, source_file_path=args.source_file_path)
+
+    base_det_boxes[:, 6] = base_det_boxes[:, 6] - 1.57
+    base_det_boxes[:, 2] = base_det_boxes[:, 2] + 0.75
 
     logger.info('DONE')
 
