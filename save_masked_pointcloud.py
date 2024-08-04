@@ -15,7 +15,7 @@ def parse_config():
                         default='cfgs/occam_configs/kitti_pointpillar.yaml',
                         help='specify the OccAM config')
     parser.add_argument('--source_file_path', type=str,
-                        default='/home/xkx/kitti/training/velodyne/000010.bin',
+                        default='/home/xkx/kitti/training/velodyne/000011.bin',
                         help='point cloud data file to analyze')
     parser.add_argument('--ckpt', type=str,
                         default='pretrained_model/based_on_kitti/second_7862.pth', required=False,
@@ -51,7 +51,7 @@ def main():
 
     pcl = occam.load_and_preprocess_pcl(args.source_file_path)
 
-    save_path = f'/home/xkx/kitti/training/velodyne_masked/{args.source_file_path[-10: -4]}_{args.nr_it}.pkl'
+    save_path = f'/media/xkx/TOSHIBA/KexuanMaTH/kitti/training/velodyne_masked_pointcloud/{args.source_file_path[-10: -4]}_{args.nr_it}.pkl'
     print(save_path)
     occam.save_masked_input(save_path, pcl, args.batch_size, args.workers)
 

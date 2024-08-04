@@ -1,4 +1,6 @@
 import argparse
+
+import numpy as np
 import torch
 import pickle
 
@@ -17,7 +19,7 @@ def parse_config():
                         default='cfgs/occam_configs/kitti_pointpillar.yaml',
                         help='specify the OccAM config')
     parser.add_argument('--source_file_path', type=str,
-                        default='/home/xkx/kitti/training/velodyne/000001.bin',
+                        default='/home/xkx/kitti/training/velodyne/000004.bin',
                         help='point cloud data file to analyze')
     parser.add_argument('--ckpt', type=str,
                         default='pretrained_model/based_on_kitti/second_7862.pth', required=False,
@@ -69,8 +71,10 @@ def main():
         pcl=pcl, base_det_boxes=base_det_boxes,
         base_det_labels=base_det_labels, batch_size=args.batch_size, source_file_path=args.source_file_path)
 
-    base_det_boxes[:, 6] = base_det_boxes[:, 6] - 1.57
-    base_det_boxes[:, 2] = base_det_boxes[:, 2] + 0.75
+    # for i in range(base_det_boxes.shape[0]):
+    #     base_det_boxes[i, 6] = -base_det_boxes[i, 6] - np.pi/2
+    #     base_det_boxes[i, 2] = base_det_boxes[i, 2] + base_det_boxes[i, 5]/2
+
 
     logger.info('DONE')
 
