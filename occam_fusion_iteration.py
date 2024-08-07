@@ -1,7 +1,6 @@
 import argparse
 
 import numpy as np
-import torch
 import pickle
 
 from pcdet.config import cfg, cfg_from_yaml_file
@@ -18,9 +17,9 @@ def parse_config():
     parser.add_argument('--occam_cfg_file', type=str,
                         default='cfgs/occam_configs/kitti_pointpillar.yaml',
                         help='specify the OccAM config')
-    parser.add_argument('--source_file_path', type=str,
-                        default='/home/xkx/kitti/training/velodyne/000002.bin',
-                        help='point cloud data file to analyze')
+    # parser.add_argument('--source_file_path', type=str,
+    #                     default='/home/xkx/kitti/training/velodyne/000000.bin',
+    #                     help='point cloud data file to analyze')
     parser.add_argument('--ckpt', type=str,
                         default='pretrained_model/based_on_kitti/second_7862.pth', required=False,
                         help='path to pretrained model parameters')
@@ -44,44 +43,40 @@ def parse_config():
     return args, cfg
 
 
-def main():
+def main(start_idx, end_idx):
     args, config = parse_config()
     logger = common_utils.create_logger()
     logger.info('------------------------ OccAM_Fusion Demo -------------------------')
 
-    occam = OccAM(data_config=config.DATA_CONFIG, model_config=config.MODEL,
-                  occam_config=config.OCCAM, class_names=config.CLASS_NAMES,
-                  model_ckpt_path=args.ckpt, nr_it=args.nr_it, logger=logger)
+    non_car_scene = []
+    for idx in range(start_idx, end_idx):
+        source_file_path = '/home/xkx/kitti/training/velodyne/'
+        idx_str = str(idx).zfill(6)
+        source_file_path = source_file_path + idx_str + '.bin'
 
-    pcl = occam.load_and_preprocess_pcl(args.source_file_path)
+        occam = OccAM(data_config=config.DATA_CONFIG, model_config=config.MODEL,
+                      occam_config=config.OCCAM, class_names=config.CLASS_NAMES,
+                      model_ckpt_path=args.ckpt, nr_it=args.nr_it, logger=logger)
 
-    # get detections to analyze (in full pcl)
-    # base_det = occam.get_base_predictions(pcl=pcl)
-    # base_det_boxes, base_det_labels, base_det_scores = base_det
-    # print("base_det_boxes: ", base_det_boxes)
-    # print("base_det_labels: ", base_det_labels)
-    # print("base_det_scores: ", base_det_scores)
+        pcl = occam.load_and_preprocess_pcl(source_file_path)
 
-    base_det_boxes, base_det_labels, base_det_scores = occam.read_original_dt_results(args.source_file_path)
-    print("CLOC base detection")
-    print("base_det_boxes: ", base_det_boxes)
-    print("base_det_labels: ", base_det_labels)
-    print("base_det_scores: ", base_det_scores)
+        base_det_boxes, base_det_labels, base_det_scores = occam.read_original_dt_results(source_file_path)
 
-    attr_maps = occam.compute_attribution_maps_fusion(
-        pcl=pcl, base_det_boxes=base_det_boxes,
-        base_det_labels=base_det_labels, batch_size=args.batch_size, source_file_path=args.source_file_path)
+        attr_maps = occam.compute_attribution_maps_fusion(
+            pcl=pcl, base_det_boxes=base_det_boxes,
+            base_det_labels=base_det_labels, batch_size=args.batch_size, source_file_path=source_file_path)
 
-    for i in range(base_det_boxes.shape[0]):
-        base_det_boxes[i, 6] = -base_det_boxes[i, 6] - np.pi/2
-        base_det_boxes[i, 2] = base_det_boxes[i, 2] + base_det_boxes[i, 5]/2
+        print(f"pcl.shape: {pcl.shape}")
+        print(f"attr_maps.shape: {attr_maps.shape}")
+        print(f"attr_maps: {attr_maps}")
+        print(f"max in attr_maps: {np.amax(attr_maps, axis=1)}")
 
-
-    logger.info('DONE')
-
-    logger.info(f'Visualize attribution map of {args.object}th object')
-    occam.visualize_attr_map(pcl, base_det_boxes[args.object, :], attr_maps[args.object, :])
+        save_path = f'/media/xkx/TOSHIBA/KexuanMaTH/kitti/training/heat_map/{source_file_path[-10: -4]}_{args.nr_it}.pkl'
+        with open(save_path, "wb") as file:
+            pickle.dump(attr_maps, file)
+    print(f"non_car_scene: {non_car_scene}")
+    logger.info('finished')
 
 
 if __name__ == '__main__':
-    main()
+    main(0, 13)

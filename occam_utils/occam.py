@@ -176,6 +176,7 @@ class OccAM(object):
         base_boxes, pert_boxes = base_boxes.cuda(), pert_boxes.cuda()
         iou = boxes_iou3d_gpu(base_boxes, pert_boxes)
         iou = iou.cpu().numpy()
+        print(f"iou: {iou}")
         return iou
 
     def compute_translation_score(self, base_boxes, pert_boxes):
@@ -384,7 +385,8 @@ class OccAM(object):
         vis.destroy_window()
 
     def read_and_preprocess_masked_dt_results(self, source_file_path):
-        read_path = f'/home/xkx/kitti/training/velodyne_masked_dt_results/{source_file_path[-10: -4]}_{self.nr_it}.pkl'
+        #read_path = f'/home/xkx/kitti/training/velodyne_masked_dt_results/{source_file_path[-10: -4]}_{self.nr_it}.pkl'
+        read_path = f'/media/xkx/TOSHIBA/KexuanMaTH/kitti/training/velodyne_masked_dt_results/{source_file_path[-10: -4]}_{self.nr_it}.pkl'
         masked_dt_results = []
         with open(read_path, 'rb') as file:
             data = pickle.load(file)
@@ -402,7 +404,8 @@ class OccAM(object):
                 "pred_labels": pred_labels
             })
 
-        read_path = f'/home/xkx/kitti/training/velodyne_masked/{source_file_path[-10: -4]}_{self.nr_it}.pkl'
+        #read_path = f'/home/xkx/kitti/training/velodyne_masked/{source_file_path[-10: -4]}_{self.nr_it}.pkl'
+        read_path = f'/media/xkx/TOSHIBA/KexuanMaTH/kitti/training/velodyne_masked_pointcloud/{source_file_path[-10: -4]}_{self.nr_it}.pkl'
         mask = []
         with open(read_path, 'rb') as file:
             data = pickle.load(file)
@@ -415,7 +418,8 @@ class OccAM(object):
 
     # read unmasked detection results from CLOCs
     def read_original_dt_results(self, source_file_path):
-        read_path = f'/home/xkx/kitti/training/velodyne_masked_dt_results/{source_file_path[-10: -4]}_original.pkl'
+        #read_path = f'/home/xkx/kitti/training/velodyne_masked_dt_results/{source_file_path[-10: -4]}_original.pkl'
+        read_path = f'/media/xkx/TOSHIBA/KexuanMaTH/kitti/training/velodyne_original_dt_results/{source_file_path[-10: -4]}_original.pkl'
         with open(read_path, 'rb') as file:
             data = pickle.load(file)
         pred_boxes = data["box3d_lidar"]
@@ -437,6 +441,9 @@ class OccAM(object):
         attr_maps = np.zeros((base_det_labels.shape[0], pcl.shape[0]))
         # count number of occurrences of each point in sampled pcl's
         sampling_map = np.zeros(pcl.shape[0])
+
+        if len(base_det_labels) == 0:
+            return attr_maps
 
         progress_bar = tqdm.tqdm(
             total=self.nr_it, leave=True, desc='OccAM computation',
@@ -508,9 +515,9 @@ class OccAM(object):
         with open(save_path, "wb") as file:
             pickle.dump(results, file)
 
-        print("results.shape: ", len(results))
-        print("points.shape: ", results[0]["points"].shape)
-        print("mask.shape: ", results[0]["mask"].shape)
-        print("results.example: ", results[0])
+        # print("results.shape: ", len(results))
+        # print("points.shape: ", results[0]["points"].shape)
+        # print("mask.shape: ", results[0]["mask"].shape)
+        # print("results.example: ", results[0])
 
-        print(f"File has been stored")
+        print(f"Masked {save_path[-15:]} has been stored")

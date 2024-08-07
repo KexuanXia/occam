@@ -1,5 +1,5 @@
 import argparse
-
+import tqdm
 from pcdet.config import cfg, cfg_from_yaml_file
 from pcdet.utils import common_utils
 
@@ -14,9 +14,9 @@ def parse_config():
     parser.add_argument('--occam_cfg_file', type=str,
                         default='cfgs/occam_configs/kitti_pointpillar.yaml',
                         help='specify the OccAM config')
-    parser.add_argument('--source_file_path', type=str,
-                        default='/home/xkx/kitti/training/velodyne/000011.bin',
-                        help='point cloud data file to analyze')
+    # parser.add_argument('--source_file_path', type=str,
+    #                     default='/home/xkx/kitti/training/velodyne/',
+    #                     help='point cloud data file to analyze')
     parser.add_argument('--ckpt', type=str,
                         default='pretrained_model/based_on_kitti/second_7862.pth', required=False,
                         help='path to pretrained model parameters')
@@ -40,21 +40,28 @@ def parse_config():
     return args, cfg
 
 
-def main():
+def main(start_idx, end_idx):
     args, config = parse_config()
     logger = common_utils.create_logger()
     logger.info('------------------------ OccAM_Fusion Demo -------------------------')
 
-    occam = OccAM(data_config=config.DATA_CONFIG, model_config=config.MODEL,
-                  occam_config=config.OCCAM, class_names=config.CLASS_NAMES,
-                  model_ckpt_path=args.ckpt, nr_it=args.nr_it, logger=logger)
+    for idx in range(start_idx, end_idx):
+        source_file_path = '/home/xkx/kitti/training/velodyne/'
+        idx_str = str(idx).zfill(6)
+        source_file_path = source_file_path + idx_str + '.bin'
 
-    pcl = occam.load_and_preprocess_pcl(args.source_file_path)
+        occam = OccAM(data_config=config.DATA_CONFIG, model_config=config.MODEL,
+                      occam_config=config.OCCAM, class_names=config.CLASS_NAMES,
+                      model_ckpt_path=args.ckpt, nr_it=args.nr_it, logger=logger)
 
-    save_path = f'/media/xkx/TOSHIBA/KexuanMaTH/kitti/training/velodyne_masked_pointcloud/{args.source_file_path[-10: -4]}_{args.nr_it}.pkl'
-    print(save_path)
-    occam.save_masked_input(save_path, pcl, args.batch_size, args.workers)
+        pcl = occam.load_and_preprocess_pcl(source_file_path)
+
+        save_path = f'/media/xkx/TOSHIBA/KexuanMaTH/kitti/training/velodyne_masked_pointcloud/{source_file_path[-10: -4]}_{args.nr_it}.pkl'
+        occam.save_masked_input(save_path, pcl, args.batch_size, args.workers)
+
+    logger.info('finished')
 
 
 if __name__ == '__main__':
-    main()
+    main(1001, 1002)
+
