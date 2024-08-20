@@ -19,7 +19,7 @@ def parse_config():
                         default='cfgs/occam_configs/kitti_pointpillar.yaml',
                         help='specify the OccAM config')
     parser.add_argument('--source_file_path', type=str,
-                        default='/home/xkx/kitti/training/velodyne/000002.bin',
+                        default='/home/xkx/kitti/training/velodyne/000167.bin',
                         help='point cloud data file to analyze')
     parser.add_argument('--ckpt', type=str,
                         default='pretrained_model/based_on_kitti/second_7862.pth', required=False,
@@ -56,11 +56,11 @@ def main():
     pcl = occam.load_and_preprocess_pcl(args.source_file_path)
 
     # get detections to analyze (in full pcl)
-    # base_det = occam.get_base_predictions(pcl=pcl)
-    # base_det_boxes, base_det_labels, base_det_scores = base_det
-    # print("base_det_boxes: ", base_det_boxes)
-    # print("base_det_labels: ", base_det_labels)
-    # print("base_det_scores: ", base_det_scores)
+    base_det = occam.get_base_predictions(pcl=pcl)
+    base_det_boxes, base_det_labels, base_det_scores = base_det
+    print("base_det_boxes: ", base_det_boxes)
+    print("base_det_labels: ", base_det_labels)
+    print("base_det_scores: ", base_det_scores)
 
     base_det_boxes, base_det_labels, base_det_scores = occam.read_original_dt_results(args.source_file_path)
     print("CLOC base detection")
@@ -72,15 +72,14 @@ def main():
         pcl=pcl, base_det_boxes=base_det_boxes,
         base_det_labels=base_det_labels, batch_size=args.batch_size, source_file_path=args.source_file_path)
 
-    for i in range(base_det_boxes.shape[0]):
-        base_det_boxes[i, 6] = -base_det_boxes[i, 6] - np.pi/2
-        base_det_boxes[i, 2] = base_det_boxes[i, 2] + base_det_boxes[i, 5]/2
-
-
+    print(f"pcl.shape: {pcl.shape}")
+    print(f"attr_maps.shape: {attr_maps.shape}")
+    print(f"attr_maps: {attr_maps}")
+    print(f"max in attr_maps: {np.amax(attr_maps, axis=1)}")
     logger.info('DONE')
 
     logger.info(f'Visualize attribution map of {args.object}th object')
-    occam.visualize_attr_map(pcl, base_det_boxes[args.object, :], attr_maps[args.object, :])
+    occam.visualize_attr_map(pcl, base_det_boxes[args.object], attr_maps[args.object])
 
 
 if __name__ == '__main__':

@@ -176,7 +176,6 @@ class OccAM(object):
         base_boxes, pert_boxes = base_boxes.cuda(), pert_boxes.cuda()
         iou = boxes_iou3d_gpu(base_boxes, pert_boxes)
         iou = iou.cpu().numpy()
-        print(f"iou: {iou}")
         return iou
 
     def compute_translation_score(self, base_boxes, pert_boxes):
@@ -397,7 +396,9 @@ class OccAM(object):
             pred_labels = dict["label_preds"] + 1
             if pred_labels.shape == (0, 4):
                 pred_labels = pred_labels.reshape(-1)
-            # print("pred_labels: ", pred_labels)
+            for i in range(pred_boxes.shape[0]):
+                pred_boxes[i, 6] = -pred_boxes[i, 6] - np.pi / 2
+                pred_boxes[i, 2] = pred_boxes[i, 2] + pred_boxes[i, 5] / 2
             masked_dt_results.append({
                 "pred_boxes": pred_boxes,
                 "pred_scores": pred_scores,
@@ -430,6 +431,10 @@ class OccAM(object):
         pred_boxes = pred_boxes.cpu().numpy()
         pred_scores = pred_scores.cpu().numpy()
         pred_labels = pred_labels.cpu().numpy()
+
+        for i in range(pred_boxes.shape[0]):
+            pred_boxes[i, 6] = -pred_boxes[i, 6] - np.pi / 2
+            pred_boxes[i, 2] = pred_boxes[i, 2] + pred_boxes[i, 5] / 2
 
         print(f"Successfully read original detection results from {read_path}")
 

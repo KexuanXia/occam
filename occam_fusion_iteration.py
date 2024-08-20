@@ -48,7 +48,6 @@ def main(start_idx, end_idx):
     logger = common_utils.create_logger()
     logger.info('------------------------ OccAM_Fusion Demo -------------------------')
 
-    non_car_scene = []
     for idx in range(start_idx, end_idx):
         source_file_path = '/home/xkx/kitti/training/velodyne/'
         idx_str = str(idx).zfill(6)
@@ -74,9 +73,8 @@ def main(start_idx, end_idx):
         save_path = f'/media/xkx/TOSHIBA/KexuanMaTH/kitti/training/heat_map/{source_file_path[-10: -4]}_{args.nr_it}.pkl'
         with open(save_path, "wb") as file:
             pickle.dump(attr_maps, file)
-    print(f"non_car_scene: {non_car_scene}")
     logger.info('finished')
 
 
 if __name__ == '__main__':
-    main(0, 13)
+    main(501, 1001)
