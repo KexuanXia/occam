@@ -324,6 +324,7 @@ class OccAM(object):
             # 这里的batch_dict已经是mask过的了
             # 这个enumerate内部会调用OccamInferenceDataset.__getitem__()
             for i, batch_dict in enumerate(dataloader):
+                print(i)
                 load_data_to_gpu(batch_dict)
                 pert_pred_dicts, _ = self.model.forward(batch_dict)
                 pert_det_boxes, pert_det_labels, pert_det_scores, batch_ids = \

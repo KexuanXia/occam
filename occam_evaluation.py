@@ -56,80 +56,37 @@ def plot_occam_evaluation(line_scores, line_iou):
     x = np.arange(0.0, 1.1, 0.1)
 
     plt.figure(figsize=(10, 8))
+    plt.suptitle('Heat Map Evaluation')
     plt.subplot(1, 2, 1)
-    plt.plot(x, line_scores[0], color='blue')
-    plt.plot(x, line_scores[1], color='orange')
-    plt.plot(x, line_scores[2], color='green')
-    plt.scatter(x, line_scores[0])
-    plt.scatter(x, line_scores[1])
-    plt.scatter(x, line_scores[2])
-    plt.xlabel('Removed Points')
-    plt.ylabel('Mean confidence score')
+    plt.plot(x, line_scores[0], color='green', label='Descend')
+    plt.plot(x, line_scores[1], color='red', label='Random')
+    plt.plot(x, line_scores[2], color='blue', label='Ascend')
+    plt.scatter(x, line_scores[0], color='green')
+    plt.scatter(x, line_scores[1], color='red')
+    plt.scatter(x, line_scores[2], color='blue')
+    plt.xlabel('Removed Points(%)')
+    plt.ylabel('Mean confidence score(%)')
     plt.xticks(np.arange(0, 1.1, 0.1))  # 设置 x 轴刻度
     plt.yticks(np.arange(0, 1.1, 0.1))  # 设置 y 轴刻度
     plt.grid(True, linestyle='--', alpha=0.7)
-    # plt.legend()
+    plt.legend()
 
     plt.subplot(1, 2, 2)
-    plt.plot(x, line_iou[0], color='blue')
-    plt.plot(x, line_iou[1], color='orange')
-    plt.plot(x, line_iou[2], color='green')
-    plt.scatter(x, line_iou[0])
-    plt.scatter(x, line_iou[1])
-    plt.scatter(x, line_iou[2])
+    plt.plot(x, line_iou[0], color='green', label='Descend')
+    plt.plot(x, line_iou[1], color='red', label='Random')
+    plt.plot(x, line_iou[2], color='blue', label='Ascend')
+    plt.scatter(x, line_iou[0], color='green')
+    plt.scatter(x, line_iou[1], color='red')
+    plt.scatter(x, line_iou[2], color='blue')
 
-    plt.xlabel('Removed Points')
-    plt.ylabel('Mean IOU')
+    plt.xlabel('Removed Points(%)')
+    plt.ylabel('Mean IoU(%)')
     plt.xticks(np.arange(0, 1.1, 0.1))  # 设置 x 轴刻度
     plt.yticks(np.arange(0, 1.1, 0.1))  # 设置 y 轴刻度
     plt.grid(True, linestyle='--', alpha=0.7)
-    # plt.legend()
+    plt.legend()
 
     # 显示图形
-    plt.show()
-
-
-def plot_occam_evaluation_v2(line_scores, line_iou):
-    def exponential_func(x, b):
-        return np.exp(b * x)
-
-    def exponential_func_2(x, b):
-        return - np.exp(b * x) + 2
-
-    x_data = np.arange(0, 1.1, 0.1)
-    color = ["blue", "orange", "green"]
-
-    # 绘制原始数据和拟合曲线
-    plt.figure(figsize=(10, 8))
-    plt.subplot(1, 2, 1)
-
-    for order in range(3):
-        popt, pcov = curve_fit(exponential_func_2, x_data, line_scores[order]) if order==2 else curve_fit(exponential_func, x_data, line_scores[order])
-
-        b = popt[0]
-
-        # 生成拟合曲线
-        x_fit = np.linspace(0, 1, 100)
-        y_fit = exponential_func_2(x_fit, b) if order == 2 else exponential_func(x_fit, b)
-
-        plt.plot(x_fit, y_fit, color=color[order])
-        plt.scatter(x_data, line_scores[order], label='Data')
-        plt.legend()
-
-    plt.subplot(1, 2, 2)
-    for order in range(3):
-        popt, pcov = curve_fit(exponential_func_2, x_data, line_iou[order]) if order == 2 else curve_fit(exponential_func, x_data, line_iou[order])
-
-        b = popt[0]
-
-        # 生成拟合曲线
-        x_fit = np.linspace(0, 1, 100)
-        y_fit = exponential_func_2(x_fit, b) if order==2 else exponential_func(x_fit, b)
-
-        plt.plot(x_fit, y_fit, color=color[order])
-        plt.scatter(x_data, line_iou[order], label='Data')
-        plt.legend()
-
     plt.show()
 
 
@@ -216,4 +173,6 @@ def main(start_idx, end_idx):
 
 
 if __name__ == '__main__':
-    main(0, 501)
+    # main(8, 9)
+    dropped_dt_scores, dropped_dt_boxes = read_dropped_dt_results(8)
+    print(1)

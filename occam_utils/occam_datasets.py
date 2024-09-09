@@ -149,6 +149,7 @@ class OccamInferenceDataset(DatasetTemplate):
         return self.nr_it
 
     def __getitem__(self, index):
+        print('__getitem__ is used')
         if index == self.nr_it:
             raise IndexError
 
@@ -186,20 +187,17 @@ class OccamInferenceDataset(DatasetTemplate):
 
         vx_keep_ids = np.where(np.random.rand(vx_keep_prob.shape[0]) < vx_keep_prob)[0]
         pt_keep_mask = np.in1d(pt_vx_id, vx_keep_ids)
+        print(f'pt_keep_mask: {pt_keep_mask}')
 
         input_dict = {
             'points': self.pcl[pt_keep_mask, :],
             'mask': pt_keep_mask
         }
 
+        print(f'input_dict: {input_dict}')
+
         data_dict = self.prepare_data(data_dict=input_dict)
 
-        # print("data_dict: ", data_dict['points'].shape)
-        # print("data_dict_keys: ", data_dict.keys())
-        # print("mask: ", data_dict['mask'].shape)
-
-        # save_path = '/home/xkx/kitti/training/velodyne_masked/000002/000002_' + str(index) + '.bin'
-        # input_dict['points'].tofile(save_path)
-        # print(str(index) + '.bin has been stored')
+        print(f'data_dict: {data_dict}')
 
         return data_dict

@@ -19,7 +19,7 @@ def parse_config():
                         default='cfgs/occam_configs/kitti_pointpillar.yaml',
                         help='specify the OccAM config')
     parser.add_argument('--source_file_path', type=str,
-                        default='/home/xkx/kitti/training/velodyne/000167.bin',
+                        default='/home/xkx/kitti/training/velodyne/000000.bin',
                         help='point cloud data file to analyze')
     parser.add_argument('--ckpt', type=str,
                         default='pretrained_model/based_on_kitti/second_7862.pth', required=False,

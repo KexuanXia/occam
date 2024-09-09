@@ -55,7 +55,12 @@ def main(start_idx, end_idx):
                       model_ckpt_path=args.ckpt, nr_it=args.nr_it, logger=logger)
 
         pcl = occam.load_and_preprocess_pcl(source_file_path)
+        # save cropped point cloud
+        save_path = '/media/xkx/TOSHIBA/KexuanMaTH/kitti/training/velodyne_croped_by_occam/'
+        save_path = save_path + idx_str + '.bin'
+        pcl.tofile(save_path)
 
+        # save 3000 times masked point cloud
         save_path = f'/media/xkx/TOSHIBA/KexuanMaTH/kitti/training/velodyne_masked_pointcloud/{source_file_path[-10: -4]}_{args.nr_it}.pkl'
         occam.save_masked_input(save_path, pcl, args.batch_size, args.workers)
 

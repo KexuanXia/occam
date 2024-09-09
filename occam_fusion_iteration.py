@@ -77,4 +77,4 @@ def main(start_idx, end_idx):
 
 
 if __name__ == '__main__':
-    main(501, 1001)
+    main(1001, 2001)
