@@ -1,13 +1,14 @@
 """
-    This file is almost the same as occam_fusion but just works for iteratively generating 3D
-    heat maps for the scenes in KITTI training set.
+    This file save the voxel information when sub-sampling point clouds.
+    It should be merged and done in the save_masked_pointcloud.py, but at the beginning of the work,
+    I didn't realize that the voxel information will be useful in the heat map combination stage.
+    During the mask generation, the 3D space is firstly divided into thousands of voxels. Each
+    point belongs to a voxel, and each voxel may have 0 or 1 or multiple points.
+    pt_vx_id contains the information that each point belongs to which voxel.
 """
 
+
 import argparse
-
-import numpy as np
-import pickle
-
 from pcdet.config import cfg, cfg_from_yaml_file
 from pcdet.utils import common_utils
 
@@ -23,7 +24,7 @@ def parse_config():
                         default='cfgs/occam_configs/kitti_pointpillar.yaml',
                         help='specify the OccAM config')
     # parser.add_argument('--source_file_path', type=str,
-    #                     default='/home/xkx/kitti/training/velodyne/000000.bin',
+    #                     default='/home/xkx/kitti/training/velodyne/',
     #                     help='point cloud data file to analyze')
     parser.add_argument('--ckpt', type=str,
                         default='pretrained_model/based_on_kitti/second_7862.pth', required=False,
@@ -50,7 +51,6 @@ def main(start_idx, end_idx):
     logger = common_utils.create_logger()
     logger.info('------------------------ OccAM_Fusion Demo -------------------------')
 
-    # iteratively generate heat maps according to index
     for idx in range(start_idx, end_idx):
         source_file_path = '/home/xkx/kitti/training/velodyne/'
         idx_str = str(idx).zfill(6)
@@ -62,31 +62,13 @@ def main(start_idx, end_idx):
 
         pcl = occam.load_and_preprocess_pcl(source_file_path)
 
-        base_det_boxes, base_det_labels, base_det_scores = occam.read_original_dt_results(source_file_path)
+        # save voxel information when generating masks
+        save_path = f'/media/xkx/TOSHIBA/KexuanMaTH/kitti/training/pt_vx_id/{source_file_path[-10: -4]}'
+        occam.save_pt_vx_id(save_path, pcl)
 
-        attr_maps, scores = occam.compute_attribution_maps_fusion(
-            pcl=pcl, base_det_boxes=base_det_boxes,
-            base_det_labels=base_det_labels, batch_size=args.batch_size, source_file_path=source_file_path)
-
-        mask_indexes = np.argsort(scores, axis=1)
-        print(f"pcl.shape: {pcl.shape}")
-        print(f"attr_maps.shape: {attr_maps.shape}")
-        print(f"attr_maps: {attr_maps}")
-        print(f"max in attr_maps: {np.amax(attr_maps, axis=1)}")
-
-        # save heat maps
-        save_path = (f'/media/xkx/TOSHIBA/KexuanMaTH/kitti/training/velodyne_heat_map_2'
-                     f'/{source_file_path[-10: -4]}_{args.nr_it}.pkl')
-        with open(save_path, "wb") as file:
-            pickle.dump(attr_maps, file)
-
-        # save masks index
-        save_path = (f'/media/xkx/TOSHIBA/KexuanMaTH/kitti/training/velodyne_heat_map_mask_indexes_2/'
-                     f'{str(idx).zfill(6)}_30.pkl')
-        with open(save_path, 'wb') as output_file:
-            pickle.dump(mask_indexes, output_file)
     logger.info('finished')
 
 
 if __name__ == '__main__':
-    main(0, 10)
+    main(0, 100)
+

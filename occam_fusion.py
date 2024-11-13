@@ -1,9 +1,12 @@
+"""
+    This file follows the basic steps in occam_demo.py but modified for applying OccAM to CLOCs,
+    while keeping image pipeline unchanged.
+"""
+
+
 import argparse
 
 import numpy as np
-import torch
-import pickle
-
 from pcdet.config import cfg, cfg_from_yaml_file
 from pcdet.utils import common_utils
 
@@ -19,7 +22,7 @@ def parse_config():
                         default='cfgs/occam_configs/kitti_pointpillar.yaml',
                         help='specify the OccAM config')
     parser.add_argument('--source_file_path', type=str,
-                        default='/home/xkx/kitti/training/velodyne/000000.bin',
+                        default='/home/xkx/kitti/training/velodyne/000003.bin',
                         help='point cloud data file to analyze')
     parser.add_argument('--ckpt', type=str,
                         default='pretrained_model/based_on_kitti/second_7862.pth', required=False,
@@ -35,9 +38,6 @@ def parse_config():
 
     args = parser.parse_args()
 
-    # 读取model_cfg_file和occam_cfg_file的内容并把它们拼接成一个字典
-    # 因为model_cfg_file里包含了_BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset.yaml
-    # 所以实际上是kitti_dataset.yaml, second.yaml, kitti_pointpillar.yaml三个配置文件的拼接
     cfg_from_yaml_file(args.model_cfg_file, cfg)
     cfg_from_yaml_file(args.occam_cfg_file, cfg)
 
@@ -55,28 +55,22 @@ def main():
 
     pcl = occam.load_and_preprocess_pcl(args.source_file_path)
 
-    # get detections to analyze (in full pcl)
-    base_det = occam.get_base_predictions(pcl=pcl)
-    base_det_boxes, base_det_labels, base_det_scores = base_det
-    print("base_det_boxes: ", base_det_boxes)
-    print("base_det_labels: ", base_det_labels)
-    print("base_det_scores: ", base_det_scores)
-
+    # read base detection results from disk
     base_det_boxes, base_det_labels, base_det_scores = occam.read_original_dt_results(args.source_file_path)
     print("CLOC base detection")
     print("base_det_boxes: ", base_det_boxes)
     print("base_det_labels: ", base_det_labels)
     print("base_det_scores: ", base_det_scores)
 
-    attr_maps = occam.compute_attribution_maps_fusion(
+    # generate heat map for masked 3d and unmasked 2d
+    # Note that the function of computing attribution is different from the one in occam_demo.py
+    attr_maps, _ = occam.compute_attribution_maps_fusion(
         pcl=pcl, base_det_boxes=base_det_boxes,
         base_det_labels=base_det_labels, batch_size=args.batch_size, source_file_path=args.source_file_path)
-
-    print(f"pcl.shape: {pcl.shape}")
     print(f"attr_maps.shape: {attr_maps.shape}")
     print(f"attr_maps: {attr_maps}")
     print(f"max in attr_maps: {np.amax(attr_maps, axis=1)}")
-    logger.info('DONE')
+    print(f"min in attr_maps: {np.amin(attr_maps, axis=1)}")
 
     logger.info(f'Visualize attribution map of {args.object}th object')
     occam.visualize_attr_map(pcl, base_det_boxes[args.object], attr_maps[args.object])

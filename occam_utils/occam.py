@@ -213,6 +213,45 @@ class OccAM(object):
         orientation_score[orientation_score < 0] = 0
         return orientation_score
 
+    def compute_orientation_score_new(self, base_boxes, pert_boxes):
+        """
+        Modified orientation score calculation.
+        The score is calculated as 1 - normalized angle difference.
+        - Angle difference 0 or pi -> score 1
+        - Angle difference pi/2 -> score 0
+        """
+        boxes_a = copy.deepcopy(base_boxes)
+        boxes_b = copy.deepcopy(pert_boxes)
+
+        # Normalize angles to be within [-pi, pi]
+        boxes_a[:, 6] = boxes_a[:, 6] % (2 * math.pi)
+        boxes_a[boxes_a[:, 6] > math.pi, 6] -= 2 * math.pi
+        boxes_a[boxes_a[:, 6] < -math.pi, 6] += 2 * math.pi
+        boxes_b[:, 6] = boxes_b[:, 6] % (2 * math.pi)
+        boxes_b[boxes_b[:, 6] > math.pi, 6] -= 2 * math.pi
+        boxes_b[boxes_b[:, 6] < -math.pi, 6] += 2 * math.pi
+
+        # Compute orientation difference
+        orientation_diff = np.abs(boxes_a[:, 6][:, None] - boxes_b[:, 6][None, :])
+        orientation_diff = np.minimum(orientation_diff, 2 * math.pi - orientation_diff)
+
+        # Normalize orientation difference for score calculation
+        orientation_score = np.ones_like(orientation_diff)
+
+        # Score calculation:
+        # - For 0 <= orientation_diff <= pi/2: linear transition from 1 to 0
+        # - For pi/2 < orientation_diff <= pi: linear transition from 0 to 1
+        mask_first_half = orientation_diff <= math.pi / 2
+        mask_second_half = orientation_diff > math.pi / 2
+
+        # First half: (0 to pi/2) -> score from 1 to 0
+        orientation_score[mask_first_half] = 1 - (orientation_diff[mask_first_half] / (math.pi / 2))
+
+        # Second half: (pi/2 to pi) -> score from 0 to 1
+        orientation_score[mask_second_half] = (orientation_diff[mask_second_half] - math.pi / 2) / (math.pi / 2)
+
+        return orientation_score
+
     def compute_scale_score(self, base_boxes, pert_boxes):
         """
         scale score (see paper for details)
@@ -267,6 +306,7 @@ class OccAM(object):
         s_transl = self.compute_translation_score(base_det_boxes, pert_det_boxes)
 
         s_orient = self.compute_orientation_score(base_det_boxes, pert_det_boxes)
+        # s_orient = self.compute_orientation_score_new(base_det_boxes, pert_det_boxes)
 
         s_score = self.compute_scale_score(base_det_boxes, pert_det_boxes)
 
@@ -324,9 +364,11 @@ class OccAM(object):
             # 这里的batch_dict已经是mask过的了
             # 这个enumerate内部会调用OccamInferenceDataset.__getitem__()
             for i, batch_dict in enumerate(dataloader):
-                print(i)
+                # print(i)
                 load_data_to_gpu(batch_dict)
                 pert_pred_dicts, _ = self.model.forward(batch_dict)
+                # 这一步是把一个batch里所有的检测结果放在一起，batch_ids用来描述某个检测结果属于哪个batch
+                # 总的数量会变化，如有的batch里可能一共有16个检测结果，有的可能只有14个等等
                 pert_det_boxes, pert_det_labels, pert_det_scores, batch_ids = \
                     self.merge_detections_in_batch(pert_pred_dicts)
 
@@ -334,12 +376,14 @@ class OccAM(object):
                     base_det_boxes, base_det_labels,
                     pert_det_boxes, pert_det_labels, pert_det_scores)
 
+                # 这里长度固定是8 batch_size
                 cur_batch_size = len(pert_pred_dicts)
                 for j in range(cur_batch_size):
                     cur_mask = batch_dict['mask'][j, :].cpu().numpy()
                     sampling_map += cur_mask
 
                     batch_sample_mask = batch_ids == j
+
                     if np.sum(batch_sample_mask) > 0:
                         max_score = np.max(
                             similarity_matrix[:, batch_sample_mask], axis=1)
@@ -354,7 +398,7 @@ class OccAM(object):
 
         return attr_maps
 
-    def visualize_attr_map(self, points, box, attr_map, draw_origin=True):
+    def visualize_attr_map(self, points, box, attr_map, draw_origin=False):
         turbo_cmap = plt.get_cmap('turbo')
         attr_map_scaled = attr_map - attr_map.min()
         attr_map_scaled /= attr_map_scaled.max()
@@ -384,8 +428,20 @@ class OccAM(object):
         vis.run()
         vis.destroy_window()
 
+    """
+        ------------------------------------------------------------------------------
+        The above code is Occam's source code, and the following is my newly added code.
+    """
+
+    def generate_random_combination(self, seed=0):
+        arr_1, arr_2 = np.arange(self.nr_it), np.arange(self.nr_it)
+        np.random.seed(seed)
+        np.random.shuffle(arr_1)
+        np.random.shuffle(arr_2)
+        result = np.column_stack((arr_1, arr_2))
+        return result
+
     def read_and_preprocess_masked_dt_results(self, source_file_path):
-        #read_path = f'/home/xkx/kitti/training/velodyne_masked_dt_results/{source_file_path[-10: -4]}_{self.nr_it}.pkl'
         read_path = f'/media/xkx/TOSHIBA/KexuanMaTH/kitti/training/velodyne_masked_dt_results/{source_file_path[-10: -4]}_{self.nr_it}.pkl'
         masked_dt_results = []
         with open(read_path, 'rb') as file:
@@ -409,12 +465,47 @@ class OccAM(object):
         #read_path = f'/home/xkx/kitti/training/velodyne_masked/{source_file_path[-10: -4]}_{self.nr_it}.pkl'
         read_path = f'/media/xkx/TOSHIBA/KexuanMaTH/kitti/training/velodyne_masked_pointcloud/{source_file_path[-10: -4]}_{self.nr_it}.pkl'
         mask = []
+        # mask是按照batch_size 8个8个一组的
         with open(read_path, 'rb') as file:
             data = pickle.load(file)
         for dict in data:
             mask.append(
                 {"mask": dict["mask"]}
             )
+        print(f"Successfully read masked detection results from {read_path}")
+        return masked_dt_results, mask
+
+    def read_and_preprocess_masked_dt_results_random_combination(self, source_file_path):
+        read_path = (f'/media/xkx/TOSHIBA/KexuanMaTH/kitti/training/Random_combination/'
+                     f'CLOC_detection_results/{source_file_path[-10: -4]}_{self.nr_it}.pkl')
+        masked_dt_results = []
+        with open(read_path, 'rb') as file:
+            data = pickle.load(file)
+        for dict in data:
+            pred_boxes = dict["box3d_lidar"]
+            pred_boxes[:, [3, 4]] = pred_boxes[:, [4, 3]]
+            pred_scores = dict["scores"]
+            pred_labels = dict["label_preds"] + 1
+            if pred_labels.shape == (0, 4):
+                pred_labels = pred_labels.reshape(-1)
+            for i in range(pred_boxes.shape[0]):
+                pred_boxes[i, 6] = -pred_boxes[i, 6] - np.pi / 2
+                pred_boxes[i, 2] = pred_boxes[i, 2] + pred_boxes[i, 5] / 2
+            masked_dt_results.append({
+                "pred_boxes": pred_boxes,
+                "pred_scores": pred_scores,
+                "pred_labels": pred_labels
+            })
+
+        read_path = f'/media/xkx/TOSHIBA/KexuanMaTH/kitti/training/velodyne_masked_pointcloud/{source_file_path[-10: -4]}_{self.nr_it}.pkl'
+        mask = []
+        with open(read_path, 'rb') as file:
+            data = pickle.load(file)
+        for dict in data:
+            # batch_size = 8
+            for i in range(8):
+                mask.append(dict["mask"][i, :])
+
         print(f"Successfully read masked detection results from {read_path}")
         return masked_dt_results, mask
 
@@ -447,27 +538,27 @@ class OccAM(object):
         attr_maps = np.zeros((base_det_labels.shape[0], pcl.shape[0]))
         # count number of occurrences of each point in sampled pcl's
         sampling_map = np.zeros(pcl.shape[0])
+        scores = np.zeros((base_det_labels.shape[0], self.nr_it))
 
         if len(base_det_labels) == 0:
-            return attr_maps
+            return attr_maps, scores
 
         progress_bar = tqdm.tqdm(
             total=self.nr_it, leave=True, desc='OccAM computation',
             dynamic_ncols=True)
 
+        # masked_dt_results: 3000, mask: 375
         masked_dt_results, mask = self.read_and_preprocess_masked_dt_results(source_file_path)
 
         # 3000/8=375
         for i in range(self.nr_it // batch_size):
             pert_pred_dicts = masked_dt_results[i * batch_size: (i + 1) * batch_size]
+            print(pert_pred_dicts[0]['pred_boxes'].cpu().numpy())
             batch_mask = mask[i]
             load_data_to_gpu(batch_mask)
 
             pert_det_boxes, pert_det_labels, pert_det_scores, batch_ids = \
                 self.merge_detections_in_batch(pert_pred_dicts)
-
-            # if len(pert_det_boxes == 0):
-            #     print("pert_det_boxes: ", pert_det_boxes)
 
             similarity_matrix = self.get_similarity_matrix(
                 base_det_boxes, base_det_labels,
@@ -480,11 +571,57 @@ class OccAM(object):
 
                 batch_sample_mask = batch_ids == j
                 if np.sum(batch_sample_mask) > 0:
-                    max_score = np.max(
-                        similarity_matrix[:, batch_sample_mask], axis=1)
+                    temp = similarity_matrix[:, batch_sample_mask]
+                    max_score = np.max(temp, axis=1)
                     attr_maps += max_score[:, None] * cur_mask
+                    scores[:, i * batch_size + j] = max_score
 
             progress_bar.update(n=cur_batch_size)
+
+        progress_bar.close()
+
+        # normalize using occurrences
+        attr_maps[:, sampling_map > 0] /= sampling_map[sampling_map > 0]
+
+        return attr_maps, scores
+
+    def compute_attribution_maps_fusion_random_combination(self, pcl, base_det_boxes, base_det_labels,
+                                                           batch_size, source_file_path):
+        attr_maps = np.zeros((base_det_labels.shape[0], pcl.shape[0]))
+        # count number of occurrences of each point in sampled pcl's
+        sampling_map = np.zeros(pcl.shape[0])
+
+        if len(base_det_labels) == 0:
+            return attr_maps
+
+        progress_bar = tqdm.tqdm(
+            total=self.nr_it, leave=True, desc='OccAM computation',
+            dynamic_ncols=True)
+
+        masked_dt_results, masks = self.read_and_preprocess_masked_dt_results_random_combination(source_file_path)
+        mask_index = self.generate_random_combination(seed=0)[:, 0]
+
+        for i in range(self.nr_it):
+            pert_pred_dicts = masked_dt_results[i]
+
+            pert_det_boxes = pert_pred_dicts['pred_boxes'].cpu().numpy()
+            pert_det_labels = pert_pred_dicts['pred_labels'].cpu().numpy()
+            pert_det_scores = pert_pred_dicts['pred_scores'].cpu().numpy()
+            # print(f'pert_pred_boxes: {pert_det_boxes}')
+            # print(f'pert_det_scores: {pert_det_scores}')
+
+            similarity_matrix = self.get_similarity_matrix(
+                base_det_boxes, base_det_labels,
+                pert_det_boxes, pert_det_labels, pert_det_scores)
+
+            mask = masks[mask_index[i]]
+            sampling_map += mask
+
+            if similarity_matrix.shape[1] != 0:
+                max_score = np.max(similarity_matrix, axis=1)
+                attr_maps += max_score[:, None] * mask
+
+            progress_bar.update(n=i)
 
         progress_bar.close()
 
@@ -512,11 +649,13 @@ class OccAM(object):
         results = []
 
         for i, dict in enumerate(dataloader):
-            dict = {
-                "points": dict["points"],
-                "mask": dict["mask"]
+            dict_to_save = {
+                'points': dict['points'],
+                'mask': dict['mask'],
+                'vx_orig_coord': dict['vx_orig_coord'],
+                'vx_keep_ids': dict['vx_keep_ids']
             }
-            results.append(dict)
+            results.append(dict_to_save)
 
         with open(save_path, "wb") as file:
             pickle.dump(results, file)
@@ -527,3 +666,19 @@ class OccAM(object):
         # print("results.example: ", results[0])
 
         print(f"Masked {save_path[-15:]} has been stored")
+
+    def save_pt_vx_id(self, save_path, pcl):
+
+        occam_inference_dataset = OccamInferenceDataset(
+            data_config=self.data_config, class_names=self.class_names,
+            occam_config=self.occam_config, pcl=pcl, nr_it=self.nr_it,
+            logger=self.logger
+        )
+
+        pt_vx_id = occam_inference_dataset.get_pt_vx_id()
+        print(pt_vx_id.shape)
+        print(pt_vx_id)
+
+        np.save(save_path, pt_vx_id)
+
+        print(f"pt_vx_id for {save_path[-15:]} has been stored")

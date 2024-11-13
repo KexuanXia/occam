@@ -1,5 +1,12 @@
+"""
+    This file pre-processes the point clouds from KITTI training dataset according to configs
+    and save it on the disk.
+    This file also generate 3000 point cloud masks for each scene.
+    The saved point clouds and masked point clouds serve as the input for CLOCs detector.
+"""
+
+
 import argparse
-import tqdm
 from pcdet.config import cfg, cfg_from_yaml_file
 from pcdet.utils import common_utils
 
@@ -31,9 +38,6 @@ def parse_config():
 
     args = parser.parse_args()
 
-    # 读取model_cfg_file和occam_cfg_file的内容并把它们拼接成一个字典
-    # 因为model_cfg_file里包含了_BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset.yaml
-    # 所以实际上是kitti_dataset.yaml, second.yaml, kitti_pointpillar.yaml三个配置文件的拼接
     cfg_from_yaml_file(args.model_cfg_file, cfg)
     cfg_from_yaml_file(args.occam_cfg_file, cfg)
 
@@ -55,18 +59,19 @@ def main(start_idx, end_idx):
                       model_ckpt_path=args.ckpt, nr_it=args.nr_it, logger=logger)
 
         pcl = occam.load_and_preprocess_pcl(source_file_path)
+
         # save cropped point cloud
         save_path = '/media/xkx/TOSHIBA/KexuanMaTH/kitti/training/velodyne_croped_by_occam/'
         save_path = save_path + idx_str + '.bin'
         pcl.tofile(save_path)
 
         # save 3000 times masked point cloud
-        save_path = f'/media/xkx/TOSHIBA/KexuanMaTH/kitti/training/velodyne_masked_pointcloud/{source_file_path[-10: -4]}_{args.nr_it}.pkl'
+        save_path = f'/media/xkx/TOSHIBA/KexuanMaTH/kitti/training/velodyne_masked_pointcloud_2/{source_file_path[-10: -4]}_{args.nr_it}.pkl'
         occam.save_masked_input(save_path, pcl, args.batch_size, args.workers)
 
     logger.info('finished')
 
 
 if __name__ == '__main__':
-    main(1001, 2001)
+    main(83, 300)
 

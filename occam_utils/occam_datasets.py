@@ -149,9 +149,59 @@ class OccamInferenceDataset(DatasetTemplate):
         return self.nr_it
 
     def __getitem__(self, index):
-        print('__getitem__ is used')
         if index == self.nr_it:
             raise IndexError
+
+        # randomly rotate and translate full pcl
+        rand_transl = np.random.rand(1, 3) * (self.sampling_vx_size[None, :])
+        rand_transl -= self.sampling_vx_size[None, :] / 2
+
+        rand_rot_ = np.random.rand(1) * self.sampling_rand_rot * 2 \
+                    - self.sampling_rand_rot
+        rand_rot_mat = Rotation.from_rotvec([0, 0, rand_rot_[0]], degrees=True)
+        rand_rot_mat = rand_rot_mat.as_matrix()
+
+        rand_rot_pcl = np.matmul(rand_rot_mat, self.pcl[:, :3].T).T
+        rand_rot_transl_pcl = rand_rot_pcl + rand_transl
+        rand_rot_transl_pcl = np.ascontiguousarray(rand_rot_transl_pcl)
+
+        # voxelixe full pcl
+        # vx_coord: 纯整数数组，大小为N*3，N是非空体素的数量，3是体素所处位置在x,y,z轴上的索引
+        _, vx_coord, _, pt_vx_id = self.voxel_generator.generate_voxel_with_id(
+            torch.from_numpy(rand_rot_transl_pcl))
+        vx_coord, pt_vx_id = vx_coord.numpy(), pt_vx_id.numpy()
+        # 把x，y，z轴改成z,y,x轴 #不知道为啥
+        vx_coord = vx_coord[:, [2, 1, 0]]
+
+        # compute voxel center in original pcl
+        # vx_orig_coord是体素中心点在实际三维空间中的坐标
+        vx_orig_coord = vx_coord * self.sampling_vx_size[None, :]
+        vx_orig_coord += self.sampling_range[:3][None, :]
+        vx_orig_coord += self.sampling_vx_size[None, :] / 2
+        vx_orig_coord -= rand_transl
+        vx_orig_coord = np.matmul(np.linalg.inv(rand_rot_mat), vx_orig_coord.T).T
+
+        vx_dist = np.linalg.norm(vx_orig_coord, axis=1)
+        vx_keep_prob = self.lbda * (
+                np.power(vx_dist, 2) * self.sampling_density_coeff[0]
+                + vx_dist * self.sampling_density_coeff[1]
+                + self.sampling_density_coeff[2])
+
+        vx_keep_ids = np.where(np.random.rand(vx_keep_prob.shape[0]) < vx_keep_prob)[0]
+        pt_keep_mask = np.in1d(pt_vx_id, vx_keep_ids)
+
+        input_dict = {
+            'points': self.pcl[pt_keep_mask, :],
+            'mask': pt_keep_mask,
+        }
+        # prepare_data函数会将已经mask过的点云进行预处理，使其能够直接输入检测器检测
+        # 注意，这里返回的data_dict会包含"voxels"等信息，但这个voxel和上面mask的voxel没有关系
+        data_dict = self.prepare_data(data_dict=input_dict)
+        data_dict['vx_orig_coord'] = vx_orig_coord
+        data_dict['vx_keep_ids'] = vx_keep_ids
+        return data_dict
+
+    def get_pt_vx_id(self):
 
         # randomly rotate and translate full pcl
         rand_transl = np.random.rand(1, 3) * (self.sampling_vx_size[None, :])
@@ -187,17 +237,5 @@ class OccamInferenceDataset(DatasetTemplate):
 
         vx_keep_ids = np.where(np.random.rand(vx_keep_prob.shape[0]) < vx_keep_prob)[0]
         pt_keep_mask = np.in1d(pt_vx_id, vx_keep_ids)
-        print(f'pt_keep_mask: {pt_keep_mask}')
 
-        input_dict = {
-            'points': self.pcl[pt_keep_mask, :],
-            'mask': pt_keep_mask
-        }
-
-        print(f'input_dict: {input_dict}')
-
-        data_dict = self.prepare_data(data_dict=input_dict)
-
-        print(f'data_dict: {data_dict}')
-
-        return data_dict
+        return pt_vx_id

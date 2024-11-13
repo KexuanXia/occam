@@ -219,6 +219,22 @@ class DatasetTemplate(torch_data.Dataset):
 
                         images.append(image_pad)
                     ret[key] = np.stack(images, axis=0)
+                elif key == 'vx_orig_coord':
+                    coords_with_batch_idx = []
+                    for batch_idx, coord in enumerate(val):
+                        # 将 batch_idx 作为新的一列加到 coord 的最前面
+                        batch_col = np.full((coord.shape[0], 1), batch_idx)
+                        coord_with_idx = np.concatenate([batch_col, coord], axis=1)
+                        coords_with_batch_idx.append(coord_with_idx)
+                    ret[key] = np.concatenate(coords_with_batch_idx, axis=0)
+                elif key == 'vx_keep_ids':
+                    ids_with_batch_idx = []
+                    for batch_idx, keep_ids in enumerate(val):
+                        # 将 batch_idx 作为新的一列加到 keep_ids 的最前面
+                        batch_col = np.full((keep_ids.shape[0], 1), batch_idx)
+                        ids_with_idx = np.concatenate([batch_col, keep_ids[:, None]], axis=1)
+                        ids_with_batch_idx.append(ids_with_idx)
+                    ret[key] = np.concatenate(ids_with_batch_idx, axis=0)
                 else:
                     ret[key] = np.stack(val, axis=0)
             except:
