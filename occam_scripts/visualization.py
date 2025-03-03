@@ -6,7 +6,7 @@
 import numpy as np
 import open3d as o3d
 
-source_file_path = '../kitti/training/velodyne/000006.bin'
+source_file_path = '../../kitti/training/velodyne/000006.bin'
 # source_file_path = '/home/xkx/kitti/training/velodyne_masked/000002/000002.bin'
 # source_file_path = '/home/xkx/Stereo-3D-Detection/results/generated_lidar/velodyne/000000.bin'
 # source_file_path = '../Pseudo_Lidar_V2/results/sdn_kitti_train_set/pseudo_lidar_trainval/000007.bin'

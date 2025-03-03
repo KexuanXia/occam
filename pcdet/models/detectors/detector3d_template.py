@@ -283,6 +283,95 @@ class Detector3DTemplate(nn.Module):
 
         return pred_dicts, recall_dict
 
+    # disable NMS process to adapt CLOCs
+    def post_processing_without_nms(self, batch_dict):
+        """
+        Args:
+            batch_dict:
+                batch_size:
+                batch_cls_preds: (B, num_boxes, num_classes | 1) or (N1+N2+..., num_classes | 1)
+                                or [(B, num_boxes, num_class1), (B, num_boxes, num_class2) ...]
+                multihead_label_mapping: [(num_class1), (num_class2), ...]
+                batch_box_preds: (B, num_boxes, 7+C) or (N1+N2+..., 7+C)
+                cls_preds_normalized: indicate whether batch_cls_preds is normalized
+                batch_index: optional (N1+N2+...)
+                has_class_labels: True/False
+                roi_labels: (B, num_rois)  1 .. num_classes
+                batch_pred_labels: (B, num_boxes, 1)
+        Returns:
+
+        """
+        post_process_cfg = self.model_cfg.POST_PROCESSING
+        batch_size = batch_dict['batch_size']
+        recall_dict = {}
+        pred_dicts = []
+        for index in range(batch_size):
+            if batch_dict.get('batch_index', None) is not None:
+                assert batch_dict['batch_box_preds'].shape.__len__() == 2
+                batch_mask = (batch_dict['batch_index'] == index)
+            else:
+                assert batch_dict['batch_box_preds'].shape.__len__() == 3
+                batch_mask = index
+
+            box_preds = batch_dict['batch_box_preds'][batch_mask]
+            src_box_preds = box_preds
+
+            if not isinstance(batch_dict['batch_cls_preds'], list):
+                cls_preds = batch_dict['batch_cls_preds'][batch_mask]
+
+                src_cls_preds = cls_preds
+                assert cls_preds.shape[1] in [1, self.num_class]
+
+                # if not batch_dict['cls_preds_normalized']:
+                #     cls_preds = torch.sigmoid(cls_preds)
+            else:
+                cls_preds = [x[batch_mask] for x in batch_dict['batch_cls_preds']]
+                src_cls_preds = cls_preds
+                # if not batch_dict['cls_preds_normalized']:
+                #     cls_preds = [torch.sigmoid(x) for x in cls_preds]
+
+            if not isinstance(cls_preds, list):
+                cls_preds = [cls_preds]
+                # 创建类别映射，从1开始编号
+                multihead_label_mapping = [torch.arange(1, self.num_class + 1, device=cls_preds[0].device)]
+            else:
+                multihead_label_mapping = batch_dict['multihead_label_mapping']
+
+            final_scores, final_labels, final_boxes = [], [], []
+            for cur_cls_preds, cur_label_mapping in zip(cls_preds, multihead_label_mapping):
+                # 获取每个预测框的最高得分和对应的类别
+                scores, labels = torch.max(cur_cls_preds, dim=-1)
+                # 映射类别标签
+                mapped_labels = cur_label_mapping[labels]
+                # 收集所有得分、标签和边界框
+                final_scores.append(scores)
+                final_labels.append(mapped_labels)
+                final_boxes.append(box_preds)
+
+            if final_scores:
+                final_scores = torch.cat(final_scores, dim=0)
+                final_labels = torch.cat(final_labels, dim=0)
+                final_boxes = torch.cat(final_boxes, dim=0)
+            else:
+                final_scores = torch.empty((0,), device=box_preds.device)
+                final_labels = torch.empty((0,), dtype=torch.int64, device=box_preds.device)
+                final_boxes = torch.empty((0, box_preds.shape[-1]), device=box_preds.device)
+
+            recall_dict = self.generate_recall_record(
+                box_preds=final_boxes if 'rois' not in batch_dict else src_box_preds,
+                recall_dict=recall_dict, batch_index=index, data_dict=batch_dict,
+                thresh_list=post_process_cfg.RECALL_THRESH_LIST
+            )
+
+            record_dict = {
+                'pred_boxes': final_boxes,
+                'pred_scores': final_scores,
+                'pred_labels': final_labels
+            }
+            pred_dicts.append(record_dict)
+
+        return pred_dicts, recall_dict
+
     @staticmethod
     def generate_recall_record(box_preds, recall_dict, batch_index, data_dict=None, thresh_list=None):
         if 'gt_boxes' not in data_dict:

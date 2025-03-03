@@ -14,6 +14,7 @@ class AnchorHeadSingle(AnchorHeadTemplate):
 
         self.num_anchors_per_location = sum(self.num_anchors_per_location)
 
+        # take care on the shape of the NN and it influence the shape of the proposals
         self.conv_cls = nn.Conv2d(
             input_channels, self.num_anchors_per_location * self.num_class,
             kernel_size=1
@@ -73,3 +74,107 @@ class AnchorHeadSingle(AnchorHeadTemplate):
             data_dict['cls_preds_normalized'] = False
 
         return data_dict
+
+    def forward_choose_one_class(self, data_dict):
+        """
+        Because CLOCs can only detect one class in one inference, the forward function was
+        adapted to only detect one class
+
+        Parameters:
+        ----------
+        1: batch_size
+        200 * 176: size of bev feature map
+        2: number of anchors per position
+
+        spatial features are the same for all classes
+        """
+        spatial_features_2d = data_dict['spatial_features_2d']
+
+        cls_preds = self.conv_cls(spatial_features_2d)
+        box_preds = self.conv_box(spatial_features_2d)
+
+        cls_preds = cls_preds.permute(0, 2, 3, 1).contiguous()  # [N, H, W, C]
+        box_preds = box_preds.permute(0, 2, 3, 1).contiguous()  # [N, H, W, C]
+
+        # only take car class
+        # If you want to detect pedestrian and cyclist, change the index here
+        cls_preds = cls_preds[..., 0:6].contiguous()
+        box_preds = box_preds[..., 0:14].contiguous()
+
+        self.forward_ret_dict['cls_preds'] = cls_preds
+        self.forward_ret_dict['box_preds'] = box_preds
+
+        if self.conv_dir_cls is not None:
+            dir_cls_preds = self.conv_dir_cls(spatial_features_2d)
+            dir_cls_preds = dir_cls_preds.permute(0, 2, 3, 1).contiguous()
+            self.forward_ret_dict['dir_cls_preds'] = dir_cls_preds
+        else:
+            dir_cls_preds = None
+
+        if self.training:
+            targets_dict = self.assign_targets(
+                gt_boxes=data_dict['gt_boxes']
+            )
+            self.forward_ret_dict.update(targets_dict)
+
+        if not self.training or self.predict_boxes_when_training:
+            batch_cls_preds, batch_box_preds = self.generate_predicted_boxes_choose_one_class(
+                batch_size=data_dict['batch_size'],
+                cls_preds=cls_preds, box_preds=box_preds, dir_cls_preds=dir_cls_preds
+            )
+
+            # 0:1
+            data_dict['batch_cls_preds'] = batch_cls_preds[:, :, 0:1]
+            data_dict['batch_box_preds'] = batch_box_preds
+            data_dict['cls_preds_normalized'] = False
+
+        return data_dict
+
+    # def forward_choose_one_class_v2(self, data_dict):
+    #     """
+    #     Because CLOCs can only detect one class in one inference, the forward function was
+    #     adapted to only detect one class
+    #
+    #     Parameters:
+    #     ----------
+    #     1: batch_size
+    #     200 * 176: size of bev feature map
+    #     2: number of anchors per position
+    #
+    #     spatial features are the same for all classes
+    #     """
+    #     spatial_features_2d = data_dict['spatial_features_2d']
+    #
+    #     cls_preds = self.conv_cls(spatial_features_2d)
+    #     box_preds = self.conv_box(spatial_features_2d)
+    #
+    #     cls_preds = cls_preds.permute(0, 2, 3, 1).contiguous()  # [N, H, W, C]
+    #     box_preds = box_preds.permute(0, 2, 3, 1).contiguous()  # [N, H, W, C]
+    #
+    #     self.forward_ret_dict['cls_preds'] = cls_preds
+    #     self.forward_ret_dict['box_preds'] = box_preds
+    #
+    #     if self.conv_dir_cls is not None:
+    #         dir_cls_preds = self.conv_dir_cls(spatial_features_2d)
+    #         dir_cls_preds = dir_cls_preds.permute(0, 2, 3, 1).contiguous()
+    #         self.forward_ret_dict['dir_cls_preds'] = dir_cls_preds
+    #     else:
+    #         dir_cls_preds = None
+    #
+    #     if self.training:
+    #         targets_dict = self.assign_targets(
+    #             gt_boxes=data_dict['gt_boxes']
+    #         )
+    #         self.forward_ret_dict.update(targets_dict)
+    #
+    #     if not self.training or self.predict_boxes_when_training:
+    #         batch_cls_preds, batch_box_preds = self.generate_predicted_boxes(
+    #             batch_size=data_dict['batch_size'],
+    #             cls_preds=cls_preds, box_preds=box_preds, dir_cls_preds=dir_cls_preds
+    #         )
+    #
+    #         data_dict['batch_cls_preds'] = batch_cls_preds[:, :70400, :1]
+    #         data_dict['batch_box_preds'] = batch_box_preds[:, :70400, :]
+    #         data_dict['cls_preds_normalized'] = False
+    #
+    #     return data_dict

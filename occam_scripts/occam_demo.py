@@ -8,8 +8,9 @@ import argparse
 
 from pcdet.config import cfg, cfg_from_yaml_file
 from pcdet.utils import common_utils
-
 from occam_utils.occam import OccAM
+import numpy as np
+import pickle
 
 
 def parse_config():
@@ -21,7 +22,7 @@ def parse_config():
                         default='cfgs/occam_configs/kitti_pointpillar.yaml',
                         help='specify the OccAM config')
     parser.add_argument('--source_file_path', type=str,
-                        default='/home/xkx/kitti/training/velodyne/000001.bin',
+                        default='/home/xkx/kitti/training/velodyne/000002.bin',
                         help='point cloud data file to analyze')
     parser.add_argument('--ckpt', type=str,
                         default='pretrained_model/based_on_kitti/second_7862.pth', required=False,
@@ -32,7 +33,7 @@ def parse_config():
                         help='number of workers for dataloader')
     parser.add_argument('--nr_it', type=int, default=3000,
                         help='number of sub-sampling iterations N')
-    parser.add_argument('--object', type=int, default=3,
+    parser.add_argument('--object', type=int, default=0,
                         help='number of detected object')
 
     args = parser.parse_args()
@@ -51,15 +52,14 @@ def main():
     occam = OccAM(data_config=config.DATA_CONFIG, model_config=config.MODEL,
                   occam_config=config.OCCAM, class_names=config.CLASS_NAMES,
                   model_ckpt_path=args.ckpt, nr_it=args.nr_it, logger=logger)
-
     pcl = occam.load_and_preprocess_pcl(args.source_file_path)
 
     # get detections to analyze (in full pcl)
     base_det = occam.get_base_predictions(pcl=pcl)
     base_det_boxes, base_det_labels, base_det_scores = base_det
-    print("base_det_boxes: ", base_det_boxes)
-    print("base_det_labels: ", base_det_labels)
-    print("base_det_scores: ", base_det_scores)
+    print("base_det_boxes:  ", base_det_boxes.shape, base_det_boxes)
+    print("base_det_labels: ", base_det_labels.shape, base_det_labels)
+    print("base_det_scores: ", base_det_scores.shape, base_det_scores)
 
     logger.info('Number of detected objects to analyze: '
                 + str(base_det_labels.shape[0]))
